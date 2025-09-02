@@ -3,6 +3,68 @@ import axios from 'axios';
 import { plainToInstance } from 'class-transformer';
 @Injectable()
 export class AppService {
+    // 大市值量化列表
+  async getBigMarketCapList(datesString: string) {
+    // 将逗号分隔的日期字符串拆分为数组
+    const dates = datesString.split(',');
+
+    // 使用Promise.all并发请求所有日期
+    const requests = dates.map((date) => {
+      return axios.get(
+        'https://prod-web.cloudgn.com/qs_svc/v1/stock_start_rank_f',
+        {
+          params: {
+            date: date.trim(),
+            version: 2,
+            url: '/qs_svc/v1/stock_start_rank_f',
+          },
+        },
+      );
+    });
+
+    // 等待所有请求完成
+    const responses = await Promise.all(requests);
+
+    // 合并所有响应数据
+    let idCounter = 0; // 初始化idCounter
+    const allMergedRecords: any[] = []; // 用于存储所有合并后的记录
+    const firstMainBoardStock: any[] = [];
+    responses.forEach((response) => {
+      if (response.data?.result?.total_count) {
+        response.data.result.records.forEach((item: any) => {
+          allMergedRecords.push({
+            id: ++idCounter,
+            stock_name: item.stock_name,
+            create_time: item.create_time,
+            stock_code: item.stock_code,
+            change_rate: item.change_rate,
+            open_price: item.open_price,
+            price: item.price,
+            star1: item.star1,
+            star2: item.star2,
+            star3: item.star3,
+            star4: item.star4,
+            star5: item.star5,
+          });
+        });
+        // 用于存储每天第一个主板票信息
+        const temp = response.data.result.records.filter((item: any) => {
+          return (
+            item.stock_code.startsWith('60') || item.stock_code.startsWith('00')
+          );
+        });
+
+        firstMainBoardStock.push(temp[0]);
+      }
+    });
+    return {
+      data: {
+        list: allMergedRecords,
+        firstMainBoardStock,
+        total: allMergedRecords.length,
+      },
+    }; // 返回合并后的所有记录
+  }
   // 5星量化列表
   async getFiveStarsList(datesString: string) {
     // 将逗号分隔的日期字符串拆分为数组
