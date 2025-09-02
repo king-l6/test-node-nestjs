@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import axios from 'axios';
-import { plainToInstance } from 'class-transformer';
+import axios from 'axios'; // 确保导入 axios
 @Injectable()
 export class AppService {
     // 大市值量化列表
@@ -201,33 +200,21 @@ export class AppService {
         total: res.data.result.total,
       },
     };
-
-    // let idCounter = 0; // 初始化idCounter
-
-    // response.data.result.records.forEach((item: any) => {
-    //   allMergedRecords.push({
-    //     id: ++idCounter,
-    //     stock_name: item.stock_name,
-    //     create_time: item.create_time,
-    //     stock_code: item.stock_code,
-    //     change_rate: item.change_rate,
-    //     open_price: item.open_price,
-    //     price: item.price,
-    //     star1: item.star1,
-    //     star2: item.star2,
-    //     star3: item.star3,
-    //     star4: item.star4,
-    //     star5: item.star5,
-    //     total_score: item.total_score,
-    //   });
-    // });
-    // }
-    // });
-    // return {
-    //   data: {
-    //     list: allMergedRecords,
-    //     total: allMergedRecords.length,
-    //   },
-    // }; // 返回合并后的所有记录
+  }
+  async sendWechatNotification(message: string): Promise<any> {
+    const webhookUrl = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=61b004af-549d-48bb-bf9d-af9ca210f832'; // 替换为您的微信群机器人Webhook URL
+    try {
+      const response = await axios.post(webhookUrl, {
+        msgtype: 'text',
+        text: {
+          content: message,
+        },
+      });
+      console.log('微信通知发送成功:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('微信通知发送失败:', error.message);
+      throw error;
+    }
   }
 }

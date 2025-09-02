@@ -26,6 +26,7 @@
     "@nestjs/schedule": "^6.0.0",
     "axios": "^1.11.0",
     "class-transformer": "^0.5.1",
+    "dayjs": "^1.11.18",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "wechat-api": "^1.35.1"

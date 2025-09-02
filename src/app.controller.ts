@@ -3,6 +3,11 @@ import { AppService } from './app.service';
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
+
+  @Get('test-wechat')
+  async testWechat() {
+    return this.appService.sendWechatNotification('测试消息');
+  }
   @Get('/quantify/bigMarket')
   async getBigMarketCap(@Query('dates') dates: string) {
     return this.appService.getBigMarketCapList(dates);
