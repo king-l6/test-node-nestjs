@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { AppService } from '../app.service';
 import * as dayjs from 'dayjs';
 
@@ -15,7 +15,6 @@ export class WechatTask {
     this.logger.debug('Called every day at 8 AM');
     try {
       // 示例：获取数据并构建消息
-      // 您可以根据需要调用 AppService 中的其他方法来获取数据
       const data = await this.appService.getFiveStarsList(
         dayjs().format('YYYY-MM-DD'),
       );
