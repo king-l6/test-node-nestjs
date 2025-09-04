@@ -1,12 +1,17 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { ScheduleModule } from '@nestjs/schedule';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { WechatTask } from './tasks/wechat.task'; // 导入 WechatTask
+import { MonitorService } from './monitor/monitor.service';
+import { MonitorTask } from './monitor/monitor.task';
 
 @Module({
-  imports: [ScheduleModule.forRoot()], // 导入 ScheduleModule
-  controllers: [AppController],
-  providers: [AppService, WechatTask], // 将 WechatTask 添加到 providers
+  imports: [
+    HttpModule,
+    ScheduleModule.forRoot()
+  ],
+  providers: [
+    MonitorService,
+    MonitorTask
+  ]
 })
 export class AppModule {}
