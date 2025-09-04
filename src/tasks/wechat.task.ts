@@ -9,8 +9,8 @@ export class WechatTask {
 
   constructor(private readonly appService: AppService) {}
 
-  @Cron('30 27 9 * * *')
-  // @Cron('* * * * * *')
+  @Cron('30 28 9 * * *')
+  // @Cron('* * * * * *')  // 每分钟触发
   async handleCron() {
     this.logger.debug('Called every day at 8 AM');
     try {
