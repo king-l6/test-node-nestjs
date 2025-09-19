@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios'; // 确保导入 axios
 @Injectable()
 export class AppService {
-    // 大市值量化列表
+  // 大市值量化列表
   async getBigMarketCapList(datesString: string) {
     // 将逗号分隔的日期字符串拆分为数组
     const dates = datesString.split(',');
@@ -100,6 +100,7 @@ export class AppService {
             stock_code: item.stock_code,
             change_rate: item.change_rate,
             open_price: item.open_price,
+            total_score: item.total_score,  
             price: item.price,
             star1: item.star1,
             star2: item.star2,
@@ -114,6 +115,7 @@ export class AppService {
             item.stock_code.startsWith('60') || item.stock_code.startsWith('00')
           );
         });
+        // const temp = response.data.result.records;
 
         firstMainBoardStock.push(temp[0]);
       }
@@ -202,7 +204,8 @@ export class AppService {
     };
   }
   async sendWechatNotification(message: string): Promise<any> {
-    const webhookUrl = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=61b004af-549d-48bb-bf9d-af9ca210f832'; // 替换为您的微信群机器人Webhook URL
+    const webhookUrl =
+      'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=61b004af-549d-48bb-bf9d-af9ca210f832'; // 替换为您的微信群机器人Webhook URL
     try {
       const response = await axios.post(webhookUrl, {
         msgtype: 'text',
