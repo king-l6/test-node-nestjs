@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios'; // 确保导入 axios
+import { max } from 'radash';
 @Injectable()
 export class AppService {
   // 大市值量化列表
@@ -100,7 +101,7 @@ export class AppService {
             stock_code: item.stock_code,
             change_rate: item.change_rate,
             open_price: item.open_price,
-            total_score: item.total_score,  
+            total_score: item.total_score,
             price: item.price,
             star1: item.star1,
             star2: item.star2,
@@ -122,7 +123,11 @@ export class AppService {
     });
     return {
       data: {
-        list: allMergedRecords,
+        list: allMergedRecords.filter(
+          (item) =>
+            item.stock_code.startsWith('60') ||
+            item.stock_code.startsWith('00'),
+        ),
         firstMainBoardStock,
         total: allMergedRecords.length,
       },
@@ -153,6 +158,7 @@ export class AppService {
     // 合并所有响应数据
     let idCounter = 0; // 初始化idCounter
     const allMergedRecords: any[] = []; // 用于存储所有合并后的记录
+    const firstMainBoardStock: any[] = [];
 
     responses.forEach((response) => {
       if (response.data?.result?.total_count) {
@@ -173,11 +179,23 @@ export class AppService {
             total_score: item.total_score,
           });
         });
+        const temp = max(
+          response.data.result.records.filter(
+            (item: any) =>
+              item.stock_code.startsWith('60') ||
+              item.stock_code.startsWith('00'),
+          ),
+          (item: any) => item.total_score,
+        );
+        // const temp = response.data.result.records;
+
+        firstMainBoardStock.push(temp);
       }
     });
     return {
       data: {
         list: allMergedRecords,
+        firstMainBoardStock,
         total: allMergedRecords.length,
       },
     }; // 返回合并后的所有记录
