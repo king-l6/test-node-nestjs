@@ -21,6 +21,11 @@ export class AppController {
   async getHighScore(@Query('dates') dates: string) {
     return this.appService.getHighScoreList(dates);
   }
+  @Get('/quantify/overlappingStocks')
+  async getOverlappingStocks(@Query('dates') dates: string) {
+    return this.appService.getOverlappingStocks(dates);
+  }
+
 
   @Post('/quantify/scoreRanking')
   async getScoreRanking(
