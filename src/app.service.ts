@@ -341,4 +341,63 @@ export class AppService {
       };
     }
   }
+  async getBuildingTowerCommentList() {
+    try {
+      const requests = axios.get(
+        'https://bbplanet.bilibili.co/api/planet/comment/commentList',
+        {
+          params: {
+            articleBusinessId: '70789621f6114c7388fdac67333739d8',
+            pageSize: 50,
+            pageNum: 1,
+            order: 1,
+            scrollId: null,
+          },
+          headers: {
+            'X-CSRF': `csrf-${Math.random()}`,
+            // 'x1-bilispy-color': 'planet',
+            'X-UserType': 1,
+            'X-AppKey': 'ops.teamwork.portal',
+            cookie: '_AJSESSIONID=ed5013452cdf3dd8b64a5f7e21b73144;',
+          },
+        },
+      );
+      const res = await requests;
+      return res.data.data;
+    } catch (error) {
+      console.error('获取同事吧评论数据出错:', error);
+      return {
+        data: {
+          list: [],
+          total: 0,
+        },
+      };
+    }
+  }
+  async sendBuildingTowerComment() {
+    try {
+      const requests = axios.post(
+        'https://bbplanet.bilibili.co/api/planet/comment/publish',
+        {
+          articleBusinessId: "68402909828445f0ac57308278bfb2b1",
+          content: 'AI编程课',
+        },
+        {
+          headers: {
+            'X-CSRF': `csrf-${Math.random()}`,
+            // 'x1-bilispy-color': 'planet',
+            'X-UserType': 1,
+            'X-AppKey': 'ops.teamwork.portal',
+            cookie: '_AJSESSIONID=ed5013452cdf3dd8b64a5f7e21b73144;',
+          },
+        },
+      );
+      const res = await requests;
+      console.log('发送同事吧评论成功,当前层数--->', res.data.data.floorNum);
+      return res.data.data;
+
+    } catch (error) {
+      console.error('发送同事吧评论数据出错:', error);
+    }
+  }
 }
