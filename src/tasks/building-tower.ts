@@ -17,7 +17,9 @@ export class BuildingTower {
         '获取同事吧评论数据:',
         JSON.stringify(data.commentReplyList[0].floorNum),
       );
-      const floorNumList = [22, 33, 233];
+      const floorNumList = [
+        80, 233, 666, 999, 1111, 1234, 1314, 2025, 2233, 3456, 4567, 5678, 6789,
+      ];
       floorNumList.forEach((floorNum) => {
         if (
           floorNum - 10 <= data.commentReplyList[0].floorNum &&

@@ -347,7 +347,7 @@ export class AppService {
         'https://bbplanet.bilibili.co/api/planet/comment/commentList',
         {
           params: {
-            articleBusinessId: '70789621f6114c7388fdac67333739d8',
+            articleBusinessId: '9934936db4104dcaa28adb0a13886193',
             pageSize: 50,
             pageNum: 1,
             order: 1,
@@ -358,7 +358,7 @@ export class AppService {
             // 'x1-bilispy-color': 'planet',
             'X-UserType': 1,
             'X-AppKey': 'ops.teamwork.portal',
-            cookie: '_AJSESSIONID=ed5013452cdf3dd8b64a5f7e21b73144;',
+            cookie: '_AJSESSIONID=2831cc666c043f21bf53242fc9808aea;',
           },
         },
       );
@@ -379,8 +379,8 @@ export class AppService {
       const requests = axios.post(
         'https://bbplanet.bilibili.co/api/planet/comment/publish',
         {
-          articleBusinessId: "68402909828445f0ac57308278bfb2b1",
-          content: 'AI编程课',
+          articleBusinessId: "9934936db4104dcaa28adb0a13886193",
+          content: '你是谁？请支持小高和刚',
         },
         {
           headers: {
@@ -388,7 +388,7 @@ export class AppService {
             // 'x1-bilispy-color': 'planet',
             'X-UserType': 1,
             'X-AppKey': 'ops.teamwork.portal',
-            cookie: '_AJSESSIONID=ed5013452cdf3dd8b64a5f7e21b73144;',
+            cookie: '_AJSESSIONID=2831cc666c043f21bf53242fc9808aea;',
           },
         },
       );
