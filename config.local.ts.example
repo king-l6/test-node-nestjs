@@ -1,0 +1,11 @@
+// 本地配置文件示例
+// 复制此文件为 config.local.ts 并填入你的 Cookie
+
+export const config = {
+  // 从浏览器开发者工具复制的 Cookie 字符串
+  // 获取方式: F12 -> Network -> 点击任意请求 -> Headers -> Cookie
+  cookie: 'your_cookie_here',
+
+  // 扫描间隔（分钟），默认 5
+  scanInterval: 5,
+};

@@ -1,13 +1,21 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BuildingTower } from './tasks/building-tower';
-import { WechatTask } from './tasks/wechat.task'; // 导入 WechatTask
+import { ArticleScanner } from './tasks/article-scanner';
+import { NotificationService } from './notification.service';
 
 @Module({
-  imports: [ScheduleModule.forRoot()], // 导入 ScheduleModule
+  imports: [
+    ScheduleModule.forRoot(),
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'public'),
+    }),
+  ],
   controllers: [AppController],
-  providers: [AppService, WechatTask, BuildingTower], // 将 WechatTask 添加到 providers
+  providers: [AppService, BuildingTower, ArticleScanner, NotificationService],
 })
 export class AppModule {}

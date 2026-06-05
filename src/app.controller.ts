@@ -1,54 +1,22 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { AppService } from './app.service';
+import { Controller, Get, Param, Redirect } from '@nestjs/common';
+import { ArticleScanner } from './tasks/article-scanner';
+
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly articleScanner: ArticleScanner) {}
 
-  @Get('test-wechat')
-  async testWechat() {
-    return this.appService.sendWechatNotification('测试消息');
-  }
-  @Get('/quantify/bigMarket')
-  async getBigMarketCap(@Query('dates') dates: string) {
-    return this.appService.getBigMarketCapList(dates);
-  }
+  @Get()
+  @Redirect('/monitor.html')
+  root() {}
 
-  @Get('/quantify/stars')
-  async getFiveStars(@Query('dates') dates: string) {
-    return this.appService.getFiveStarsList(dates);
-  }
-  @Get('/quantify/highScore')
-  async getHighScore(@Query('dates') dates: string) {
-    return this.appService.getHighScoreList(dates);
-  }
-  @Get('/quantify/overlappingStocks')
-  async getOverlappingStocks(@Query('dates') dates: string) {
-    return this.appService.getOverlappingStocks(dates);
+  @Get('api/monitor')
+  getMonitorStatus() {
+    return this.articleScanner.getMonitorStatus();
   }
 
-
-  @Post('/quantify/scoreRanking')
-  async getScoreRanking(
-    @Body()
-    params: {
-      trade_date: string;
-      max_score: number;
-      min_score: number;
-      page_num: number;
-      page_size: number;
-    },
-  ) {
-    return this.appService.getScoreRankingList(params);
+  @Get('api/monitor/add-floor/:floorNum')
+  addTargetFloor(@Param('floorNum') floorNum: string) {
+    this.articleScanner.addManualTargetFloor(parseInt(floorNum, 10));
+    return { success: true, floorNum: parseInt(floorNum, 10) };
   }
-
-  // @Controller()
-  // export class AppController {
-  //   constructor(private readonly wechatTask: WechatTask) {}
-
-  //   @Get('/test-wechat-task')
-  //   async testWechatTask() {
-  //     await this.wechatTask.sendNameToWechat();
-  //     return { message: '手动触发成功' };
-  //   }
-  // }
 }

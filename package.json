@@ -24,13 +24,11 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/schedule": "^6.0.0",
+    "@nestjs/serve-static": "^5.0.5",
     "axios": "^1.11.0",
     "class-transformer": "^0.5.1",
-    "dayjs": "^1.11.18",
-    "radash": "^12.1.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "wechat-api": "^1.35.1"
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

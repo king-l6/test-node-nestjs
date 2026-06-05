@@ -1,100 +1,135 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# B站同事吧盖楼自动抢楼工具
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+自动扫描 B 站同事吧新发布的盖楼帖子，并在接近目标楼层时自动发送评论。
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 功能特性
 
-## Description
+- 定时扫描新发布的帖子（每 5 分钟）
+- 自动识别标题包含"盖楼"的帖子
+- 解析帖子内容中的目标楼层
+- 监控评论楼层，接近目标时自动抢楼
+- 提供 Web 监控面板实时查看状态
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 环境要求
 
-## Project setup
+- Node.js >= 18
+- pnpm（推荐）或 npm
+
+## 安装
 
 ```bash
-$ pnpm install
+# 克隆项目
+git clone <your-repo-url>
+cd nestjs-project
+
+# 安装依赖
+pnpm install
 ```
 
-## Compile and run the project
+## 配置
+
+### 1. 创建本地配置文件
+
+在项目根目录创建 `config.local.ts`：
+
+```typescript
+export const config = {
+  // 从浏览器复制的 Cookie 字符串
+  cookie: 'your_cookie_here',
+  // 扫描间隔（分钟），默认 5
+  scanInterval: 5,
+};
+```
+
+### 2. 获取 Cookie
+
+1. 打开 Chrome 浏览器，访问 https://bbplanet.bilibili.co/pc/
+2. 登录你的账号
+3. 按 `F12` 打开开发者工具
+4. 切换到 **Network** 面板，随便点击一个请求
+5. 在 **Headers** 中找到 `Cookie` 字段，复制完整内容
+6. 粘贴到 `config.local.ts` 的 `cookie` 字段
+
+或者在 **Console** 中执行 `document.cookie` 获取。
+
+### 3. 重要 Cookie 字段
+
+以下 Cookie 字段是必需的：
+
+| 字段 | 说明 |
+|------|------|
+| `_AJSESSIONID` | 会话 ID，用于身份验证 |
+| `billions_jwt` | JWT Token，包含过期时间 |
+| `uid` | 用户 ID |
+| `username` | 用户名 |
+
+**注意**：`billions_jwt` 通常 24 小时过期，过期后需要重新获取。
+
+## 运行
 
 ```bash
-# development
-$ pnpm run start
+# 开发模式（代码修改自动重启）
+pnpm run start:dev
 
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+# 生产模式
+pnpm run build
+pnpm run start:prod
 ```
 
-## Run tests
+## 访问监控面板
+
+启动后访问：http://localhost:3000/monitor
+
+监控面板功能：
+- 实时显示监控中的帖子
+- 显示当前楼层和目标楼层
+- 区分已抢/待抢/已过期的楼层
+- 自动刷新（3 秒）
+
+## 常见问题
+
+### dashboard验证失败
+
+Cookie 已过期，需要重新从浏览器获取。
+
+### 端口被占用
 
 ```bash
-# unit tests
-$ pnpm run test
+# 查看占用端口的进程
+lsof -i :3000
 
-# e2e tests
-$ pnpm run test:e2e
+# 杀掉进程
+kill -9 <PID>
 
-# test coverage
-$ pnpm run test:cov
+# 简洁写法
+kill -9 $(lsof -ti:3000)
 ```
 
-## Deployment
+## 项目结构
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+```
+nestjs-project/
+├── src/
+│   ├── app.module.ts          # 模块配置
+│   ├── app.controller.ts      # 控制器（监控 API）
+│   ├── app.service.ts         # 服务（API 请求）
+│   └── tasks/
+│       └── article-scanner.ts # 定时扫描任务
+├── public/
+│   └── monitor.html           # 监控面板页面
+├── config.local.ts            # 本地配置（不提交 Git）
+├── .gitignore
+├── package.json
+└── README.md
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## 技术栈
 
-## Resources
+- NestJS
+- TypeScript
+- @nestjs/schedule（定时任务）
+- Axios（HTTP 请求）
 
-Check out a few resources that may come in handy when working with NestJS:
+## 免责声明
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
-# node
-# node
+本工具仅供学习交流使用，请遵守 B 站相关规定。

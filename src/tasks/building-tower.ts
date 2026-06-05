@@ -8,7 +8,7 @@ export class BuildingTower {
 
   constructor(private readonly appService: AppService) {}
 
-  @Cron('1 * * * * *')
+  // @Cron('* * * * * *')
   async handleCron() {
     try {
       // 示例：获取数据并构建消息
@@ -18,7 +18,8 @@ export class BuildingTower {
         JSON.stringify(data.commentReplyList[0].floorNum),
       );
       const floorNumList = [
-        80, 233, 666, 999, 1111, 1234, 1314, 2025, 2233, 3456, 4567, 5678, 6789,
+        6, 10, 60, 66, 660, 666, 995, 999, 1230, 1234, 1310, 1314, 1683, 1688,
+        2020, 2026, 2227, 2233,
       ];
       floorNumList.forEach((floorNum) => {
         if (
