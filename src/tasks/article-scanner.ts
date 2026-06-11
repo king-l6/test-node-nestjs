@@ -91,16 +91,14 @@ export class ArticleScanner {
     }
 
     // 动态调整间隔
-    if (minGap <= 5) {
-      this.checkInterval = 1000; // 差 5 层以内：1 秒
-    } else if (minGap <= 20) {
-      this.checkInterval = 3000; // 差 20 层以内：3 秒
-    } else if (minGap <= 50) {
-      this.checkInterval = 10000; // 差 50 层以内：10 秒
-    } else if (minGap <= 100) {
-      this.checkInterval = 30000; // 差 100 层以内：30 秒
+    if (minGap < 10) {
+      this.checkInterval = 1000; // 差 10 层以内：1 秒
+    } else if (minGap < 50) {
+      this.checkInterval = 1000; // 差 50 层以内：1 秒
+    } else if (minGap < 100) {
+      this.checkInterval = 5000; // 差 100 层以内：5 秒
     } else {
-      this.checkInterval = 60000; // 差 100 层以上：60 秒
+      this.checkInterval = 10000; // 差 100 层以上：10 秒
     }
 
     this.logger.log(
@@ -222,35 +220,32 @@ export class ArticleScanner {
             continue;
           }
 
-          // 当前楼层到达目标附近（差10层以内），开始尝试抢楼
-          if (
-            currentFloor >= target.floorNum - 10 &&
-            currentFloor < target.floorNum
-          ) {
+          // 当前楼层到达目标附近，开始尝试抢楼
+          const gap = target.floorNum - currentFloor;
+          if (gap > 0 && gap <= 10) {
             this.logger.log(
-              `[${tracked.title}] 接近目标楼层 ${target.floorNum}，当前楼层: ${currentFloor}，尝试抢楼`,
+              `[${tracked.title}] 接近目标楼层 ${target.floorNum}，当前楼层: ${currentFloor}，差距: ${gap}层，尝试抢楼`,
             );
 
-            // 发送评论
-            const result = await this.appService.sendComment(businessId, '1');
-            if (result) {
-              this.logger.log(
-                `[${tracked.title}] 发送评论成功，目标: ${target.floorNum}, 实际: ${result.floorNum}`,
-              );
-              // 只有实际到达或超过目标楼层才算成功
-              if (result.floorNum >= target.floorNum) {
+            // 差距小于10层时连发两条
+            const sendCount = gap < 10 ? 2 : 1;
+            for (let i = 0; i < sendCount; i++) {
+              const result = await this.appService.sendComment(businessId, '1');
+              if (result) {
                 this.logger.log(
-                  `[${tracked.title}] 抢楼成功! 实际楼层 ${result.floorNum} 到达目标 ${target.floorNum}`,
+                  `[${tracked.title}] 第${i + 1}条发送成功，目标: ${target.floorNum}, 实际: ${result.floorNum}`,
                 );
-                target.claimed = true;
-                this.notificationService.send(
-                  '抢楼成功!',
-                  `<b>${tracked.title}</b><br>目标楼层: ${target.floorNum}<br>实际楼层: ${result.floorNum}`,
-                );
-              } else {
-                this.logger.log(
-                  `[${tracked.title}] 实际楼层 ${result.floorNum} 未到达目标 ${target.floorNum}，继续尝试`,
-                );
+                if (result.floorNum >= target.floorNum) {
+                  this.logger.log(
+                    `[${tracked.title}] 抢楼成功! 实际楼层 ${result.floorNum} 到达目标 ${target.floorNum}`,
+                  );
+                  target.claimed = true;
+                  this.notificationService.send(
+                    '抢楼成功!',
+                    `<b>${tracked.title}</b><br>目标楼层: ${target.floorNum}<br>实际楼层: ${result.floorNum}`,
+                  );
+                  break;
+                }
               }
             }
           }
