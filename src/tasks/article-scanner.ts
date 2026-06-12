@@ -14,6 +14,8 @@ interface TrackedArticle {
   publishTime: string;
   targetFloors: TargetFloor[];
   lastCheckedFloor: number;
+  lastCheckTime: number;
+  currentSpeed: number; // 当前盖楼速度（层/分钟）
 }
 
 @Injectable()
@@ -39,10 +41,10 @@ export class ArticleScanner {
   ) {
     // 启动时立即执行一次
     setTimeout(() => this.scanNewArticles(), 3000);
-    // 扫描完成后注入目标楼层
-    setTimeout(() => {
-      this.addManualTargetFloor(2330);
-    }, 8000);
+    // // 扫描完成后注入目标楼层
+    // setTimeout(() => {
+    //   this.addManualTargetFloor(2330);
+    // }, 8000);
     // 启动动态检查循环
     this.startDynamicCheck();
   }
@@ -69,10 +71,26 @@ export class ArticleScanner {
     this.checkTimer = setTimeout(check, this.checkInterval);
   }
 
-  // 根据距离目标楼层的差距动态调整检查间隔
+  // 根据盖楼速度和距离目标楼层的差距动态调整检查间隔
   private updateCheckInterval() {
     if (this.trackedArticles.size === 0) {
       this.checkInterval = 60000; // 没有监控的帖子，60 秒检查一次
+      return;
+    }
+
+    // 检查是否有帖子盖楼速度过快（>100层/分钟），直接改为1秒间隔
+    let maxSpeed = 0;
+    for (const [_, tracked] of this.trackedArticles) {
+      if (tracked.currentSpeed > maxSpeed) {
+        maxSpeed = tracked.currentSpeed;
+      }
+    }
+
+    if (maxSpeed > 100) {
+      this.checkInterval = 1000;
+      this.logger.log(
+        `检测到盖楼速度过快(${maxSpeed}层/分钟)，检查间隔调整为: 1秒`,
+      );
       return;
     }
 
@@ -175,6 +193,8 @@ export class ArticleScanner {
             claimed: false,
           })),
           lastCheckedFloor: 0,
+          lastCheckTime: 0,
+          currentSpeed: 0,
         });
         this.processedArticles.set(article.businessId, {
           title: article.title,
@@ -213,6 +233,24 @@ export class ArticleScanner {
 
         const currentFloor: number = (commentData.commentReplyList[0] as any)
           .floorNum;
+
+        // 计算盖楼速度（层/分钟）
+        const now = Date.now();
+        if (tracked.lastCheckTime > 0 && currentFloor > tracked.lastCheckedFloor) {
+          const elapsedMinutes = (now - tracked.lastCheckTime) / 60000;
+          if (elapsedMinutes > 0) {
+            tracked.currentSpeed = Math.round(
+              (currentFloor - tracked.lastCheckedFloor) / elapsedMinutes,
+            );
+          }
+        } else if (currentFloor <= tracked.lastCheckedFloor) {
+          tracked.currentSpeed = 0;
+        }
+        tracked.lastCheckTime = now;
+
+        this.logger.log(
+          `[${tracked.title}] 当前楼层: ${currentFloor}, 速度: ${tracked.currentSpeed}层/分钟`,
+        );
 
         // 检查是否有需要抢的楼层
         for (const target of tracked.targetFloors) {
