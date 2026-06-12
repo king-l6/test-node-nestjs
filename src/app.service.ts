@@ -214,4 +214,92 @@ export class AppService {
       console.error('发送同事吧评论数据出错:', error);
     }
   }
+
+  // 获取当前用户信息
+  async getUserInfo() {
+    try {
+      const res = await axios.get(
+        'https://bbplanet.bilibili.co/api/planet/user/current',
+        {
+          headers: {
+            ...this.headers,
+            'x-csrf': `csrf-${Math.random()}`,
+            cookie: this.cookie,
+          },
+        },
+      );
+      if (res.data.code !== 0) {
+        this.logger.error('获取用户信息返回错误:', res.data.message);
+        return null;
+      }
+      return res.data.data;
+    } catch (error) {
+      this.logger.error('获取用户信息失败:', error.response?.data || error.message);
+      return null;
+    }
+  }
+
+  // 获取指定评论楼层的信息
+  async getCommentFloor(articleBusinessId: string, floorNum: number) {
+    try {
+      // 获取第一页，拿到 total 总数
+      const res = await axios.get(
+        'https://bbplanet.bilibili.co/api/planet/comment/commentList',
+        {
+          params: {
+            articleBusinessId,
+            pageSize: 50,
+            pageNum: 1,
+            order: 1,
+            scrollId: null,
+          },
+          headers: {
+            ...this.headers,
+            'x-csrf': `csrf-${Math.random()}`,
+            cookie: this.cookie,
+          },
+        },
+      );
+      if (res.data.code !== 0) return null;
+
+      // 先查第一页
+      const firstList = res.data.data?.commentReplyList || [];
+      for (const c of firstList) {
+        if (c.floorNum === floorNum) {
+          return { floorNum: c.floorNum, content: c.content, userName: c.sourceNickname || c.userName || c.nickName };
+        }
+      }
+
+      const total = res.data.data?.total || 0;
+      // order=1 最新在前，楼层号从高到低排列
+      // 目标楼层在第几页：先算它在倒排中的位置，再换算页码
+      const position = total - floorNum + 1; // 在倒排中的序号（从1开始）
+      const estimatedPage = Math.ceil(position / 50);
+
+      // 在估算页附近 ±3 页范围内搜索
+      const startPage = Math.max(2, estimatedPage - 3);
+      const endPage = Math.min(estimatedPage + 3, 100);
+
+      for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
+        const pageRes = await axios.get(
+          'https://bbplanet.bilibili.co/api/planet/comment/commentList',
+          {
+            params: { articleBusinessId, pageSize: 50, pageNum, order: 1, scrollId: null },
+            headers: { ...this.headers, 'x-csrf': `csrf-${Math.random()}`, cookie: this.cookie },
+          },
+        );
+        if (pageRes.data.code !== 0 || !pageRes.data.data?.commentReplyList) break;
+        for (const c of pageRes.data.data.commentReplyList) {
+          if (c.floorNum === floorNum) {
+            return { floorNum: c.floorNum, content: c.content, userName: c.sourceNickname || c.userName || c.nickName };
+          }
+        }
+        if (pageRes.data.data.commentReplyList.length < 50) break;
+      }
+      return null;
+    } catch (error) {
+      this.logger.error(`获取评论楼层失败 [${floorNum}]:`, error.response?.data || error.message);
+      return null;
+    }
+  }
 }

@@ -160,6 +160,12 @@
       color: var(--accent);
     }
 
+    .article-time {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
     .floor-counter {
       text-align: right;
       margin-left: 16px;
@@ -198,12 +204,6 @@
       border: 1px solid transparent;
     }
 
-    .chip-done {
-      background: #f0fdf4;
-      color: var(--green);
-      border-color: #bbf7d0;
-    }
-
     .chip-next {
       background: #fffbeb;
       color: var(--yellow);
@@ -221,6 +221,54 @@
       background: var(--bg);
       color: var(--text-dim);
       border-color: var(--border);
+    }
+
+    .chip-hit {
+      background: #f0fdf4;
+      color: var(--green);
+      border-color: var(--green);
+    }
+
+    .chip-miss {
+      background: #fef2f2;
+      color: #dc2626;
+      border-color: #fecaca;
+    }
+
+    .chip-ungrab {
+      background: #fffbeb;
+      color: #d97706;
+      border-color: #fde68a;
+    }
+
+    .prize-card {
+      background: var(--card);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .prize-target {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+
+    .prize-info {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    .prize-info a {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .prize-info a:hover {
+      color: var(--accent);
     }
 
     /* Progress */
@@ -249,28 +297,6 @@
       color: var(--text-dim);
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
-    }
-
-    /* Expired */
-    .expired-card {
-      padding: 16px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .expired-title {
-      font-size: 12px;
-      color: var(--text-dim);
-    }
-
-    .expired-tag {
-      font-size: 10px;
-      color: var(--green);
-      border: 1px solid #bbf7d0;
-      padding: 2px 8px;
-      border-radius: 3px;
-      background: #f0fdf4;
     }
 
     /* Empty */
@@ -348,10 +374,42 @@
   <div class="section-label">已过期 <span class="count" id="badge-e">0</span></div>
   <div class="grid" id="expired"></div>
 
+  <div style="margin-top: 24px;"></div>
+  <div class="section-label">🏆 中奖信息</div>
+  <div class="grid" id="prizes"></div>
+
   <div class="bottom-info" id="lastUpdate"></div>
+
+  <div style="margin-top: 12px; text-align: center;">
+    <button id="verifyBtn" onclick="verifyAll()" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 20px;font-size:11px;cursor:pointer;color:var(--text);font-family:inherit;">🔄 验证抢楼结果</button>
+    <button onclick="loadRecords()" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 20px;font-size:11px;cursor:pointer;color:var(--text);font-family:inherit;margin-left:8px;">📋 本地记录</button>
+    <span id="verifyStatus" style="margin-left:8px;font-size:10px;color:var(--text-dim);"></span>
+  </div>
+
+  <!-- 本地记录弹窗 -->
+  <div id="recordsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;">
+    <div style="background:var(--card);border-radius:8px;max-width:600px;width:90%;max-height:80vh;overflow:auto;padding:24px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span style="font-size:13px;font-weight:600;">🏆 本地中奖记录</span>
+        <span onclick="document.getElementById('recordsModal').style.display='none'" style="cursor:pointer;font-size:18px;color:var(--text-dim);">&times;</span>
+      </div>
+      <div id="recordsContent" style="font-size:11px;color:var(--text-dim);text-align:center;padding:24px 0;">加载中...</div>
+    </div>
+  </div>
 
   <script>
     let timer;
+
+    function formatTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const now = new Date();
+      const diff = (now - d) / 1000;
+      if (diff < 60) return '刚刚发布';
+      if (diff < 3600) return Math.floor(diff / 60) + '分钟前发布';
+      if (diff < 86400) return Math.floor(diff / 3600) + '小时前发布';
+      return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
 
     async function poll() {
       try {
@@ -371,25 +429,36 @@
       document.getElementById('badge-m').textContent = d.summary.monitoringCount;
       document.getElementById('badge-e').textContent = d.summary.expiredCount;
 
+      function floorChip(f, currentFloor, isNext) {
+        if (f.grabbed) {
+          const hit = f.landedFloor ? ` (命中${f.landedFloor})` : '';
+          const v = f.verified === true ? ' ✓' : f.verified === false ? ' ⚠' : '';
+          const cls = f.verified === true ? 'chip-hit' : f.verified === false ? 'chip-ungrab' : 'chip-hit';
+          return `<span class="chip ${cls}">✓ ${f.floorNum}${hit}${v}</span>`;
+        }
+        if (f.claimed) {
+          return `<span class="chip chip-miss">✗ ${f.floorNum}</span>`;
+        }
+        let cls = isNext ? 'chip-next' :
+                  currentFloor >= f.floorNum - 30 ? 'chip-wait' :
+                  'chip-far';
+        return `<span class="chip ${cls}">${f.floorNum}</span>`;
+      }
+
       const m = document.getElementById('monitoring');
       if (!d.monitoring.length) {
         m.innerHTML = '<div class="empty">空闲中</div>';
       } else {
         m.innerHTML = d.monitoring.map(a => {
-          const chips = a.targetFloors.map(f => {
-            let cls = f.claimed ? 'chip-done' :
-                      f.floorNum === a.nextTarget ? 'chip-next' :
-                      a.currentFloor >= f.floorNum - 30 ? 'chip-wait' :
-                      'chip-far';
-            return `<span class="chip ${cls}">${f.floorNum}</span>`;
-          }).join('');
-
+          const chips = a.targetFloors.map(f => floorChip(f, a.currentFloor, f.floorNum === a.nextTarget)).join('');
           const pct = a.targetFloors.length ? Math.round(a.claimedCount / a.targetFloors.length * 100) : 0;
-
           return `
             <div class="article-card">
               <div class="article-head">
-                <div class="article-title"><a href="${a.url}" target="_blank">${a.title}</a></div>
+                <div class="article-title">
+                  <a href="${a.url}" target="_blank">${a.title}</a>
+                  <div class="article-time">${formatTime(a.publishTime)}</div>
+                </div>
                 <div class="floor-counter">
                   <div class="floor-num">${a.currentFloor || '-'}</div>
                   <div class="floor-label">CURRENT</div>
@@ -408,11 +477,99 @@
       if (!d.expired.length) {
         e.innerHTML = '<div class="empty">—</div>';
       } else {
-        e.innerHTML = d.expired.map(a => `
-          <div class="expired-card">
-            <div class="expired-title">${a.title}</div>
-            <div class="expired-tag">DONE</div>
+        e.innerHTML = d.expired.map(a => {
+          const chips = a.targetFloors.map(f => floorChip(f, 999999)).join('');
+          return `
+            <div class="article-card">
+              <div class="article-head">
+                <div class="article-title">
+                  <a href="${a.url}" target="_blank">${a.title}</a>
+                  <div class="article-time">${formatTime(a.publishTime)}</div>
+                </div>
+                <div class="floor-counter">
+                  <div class="floor-num" style="font-size:14px;color:var(--text)">${a.grabbedCount}/${a.totalCount}</div>
+                  <div class="floor-label">HIT</div>
+                </div>
+              </div>
+              <div class="floor-chips">${chips}</div>
+            </div>`;
+        }).join('');
+      }
+
+      // 汇总所有抢到的楼层（领奖信息）
+      const prizes = [];
+      for (const a of d.monitoring) {
+        for (const f of a.targetFloors) {
+          if (f.grabbed) prizes.push({ title: a.title, url: a.url, target: f.floorNum, landed: f.landedFloor });
+        }
+      }
+      for (const a of d.expired) {
+        for (const f of a.targetFloors) {
+          if (f.grabbed) prizes.push({ title: a.title, url: a.url, target: f.floorNum, landed: f.landedFloor });
+        }
+      }
+      const el = document.getElementById('prizes');
+      if (!prizes.length) {
+        el.innerHTML = '<div class="empty">暂无中奖记录</div>';
+      } else {
+        el.innerHTML = prizes.map(p => `
+          <div class="prize-card">
+            <div class="prize-target">🎯 楼层 ${p.target}</div>
+            <div class="prize-info">命中 <strong>${p.landed || '?'}</strong> 层 · <a href="${p.url}" target="_blank">${p.title}</a></div>
           </div>`).join('');
+      }
+    }
+
+    async function verifyAll() {
+      const status = document.getElementById('verifyStatus');
+      const btn = document.getElementById('verifyBtn');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = '⏳ 验证中...';
+      status.textContent = '请求中...';
+      try {
+        const res = await fetch('/api/verify');
+        const data = await res.json();
+        if (!Array.isArray(data)) {
+          status.textContent = '验证失败: ' + JSON.stringify(data);
+          return;
+        }
+        const ok = data.filter(r => r.verified).length;
+        const fail = data.filter(r => !r.verified).length;
+        status.textContent = `验证完成: ${ok} 个命中确认, ${fail} 个需手动核实`;
+        poll();
+      } catch (e) {
+        status.textContent = '请求失败: ' + e.message;
+      }
+      btn.disabled = false;
+      btn.textContent = '🔄 验证抢楼结果';
+    }
+
+    async function loadRecords() {
+      document.getElementById('recordsModal').style.display = 'flex';
+      document.getElementById('recordsContent').textContent = '加载中...';
+      try {
+        const res = await fetch('/api/records');
+        const data = await res.json();
+        const el = document.getElementById('recordsContent');
+        if (!data.length) {
+          el.innerHTML = '<div style="padding:24px 0;">暂无记录</div>';
+        } else {
+          el.innerHTML = data.map(r => {
+            const u = r.url || `https://bbplanet.bilibili.co/pc/#/detail?tId=${r.businessId}&h=4`;
+            return `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);text-align:left;">
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:500;color:var(--text);">🎯 楼层 ${r.floorNum} ${r.landedFloor !== r.floorNum ? `(命中${r.landedFloor})` : ''}</div>
+                <div style="font-size:10px;color:var(--text-dim);margin-top:4px;"><a href="${u}" target="_blank" style="color:var(--text);text-decoration:none;">${r.title}</a></div>
+                <div style="font-size:10px;color:var(--text-dim);margin-top:2px;">评论: "${r.commentContent}" · ${new Date(r.verifiedAt).toLocaleString('zh-CN')}</div>
+              </div>
+              <span style="font-size:10px;color:var(--green);background:#f0fdf4;padding:2px 8px;border-radius:4px;white-space:nowrap;">✓ 已确认</span>
+            </div>`;
+          }).join('');
+        }
+      } catch (e) {
+        document.getElementById('recordsContent').textContent = '加载失败: ' + e.message;
       }
     }
 

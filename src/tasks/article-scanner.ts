@@ -2,10 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { AppService } from '../app.service';
 import { NotificationService } from '../notification.service';
+import { config } from '../../config.local';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface TargetFloor {
   floorNum: number;
   claimed: boolean;
+  grabbed: boolean; // true=成功抢到, false=错过
+  landedFloor?: number; // 评论实际落地的楼层(抢到时才有)
+  claimedAt?: number;
+  verified?: boolean; // 是否通过接口验证确认命中
 }
 
 interface TrackedArticle {
@@ -13,9 +20,19 @@ interface TrackedArticle {
   title: string;
   publishTime: string;
   targetFloors: TargetFloor[];
+  commentContent: string; // 指定的评论内容，为空则使用默认值 "1"
   lastCheckedFloor: number;
   lastCheckTime: number;
   currentSpeed: number; // 当前盖楼速度（层/分钟）
+}
+
+interface ProcessedArticle {
+  title: string;
+  businessId: string;
+  reason: string;
+  targetFloors: TargetFloor[];
+  commentContent: string;
+  publishTime: string;
 }
 
 @Injectable()
@@ -26,26 +43,30 @@ export class ArticleScanner {
   private trackedArticles: Map<string, TrackedArticle> = new Map();
 
   // 已处理过的帖子（避免重复扫描）
-  private processedArticles: Map<
-    string,
-    { title: string; businessId: string; reason: string }
-  > = new Map();
+  private processedArticles: Map<string, ProcessedArticle> = new Map();
 
   // 动态检查间隔（毫秒）
-  private checkInterval = 60000; // 默认 60 秒
+  private checkInterval = 20000; // 默认 20 秒（速度检测模式）
   private checkTimer: NodeJS.Timeout | null = null;
+
+  // 本地记录文件路径
+  private readonly grabRecordsPath = path.resolve(
+    __dirname,
+    '../../data/grab-records.json',
+  );
 
   constructor(
     private readonly appService: AppService,
     private readonly notificationService: NotificationService,
   ) {
-    // 启动时立即执行一次
-    setTimeout(() => this.scanNewArticles(), 3000);
-    // // 扫描完成后注入目标楼层
-    // setTimeout(() => {
-    //   this.addManualTargetFloor(2330);
-    // }, 8000);
-    // 启动动态检查循环
+    this.init();
+  }
+
+  private async init() {
+    await this.scanNewArticles();
+    if (this.trackedArticles.size > 0) {
+      await this.checkCommentFloors();
+    }
     this.startDynamicCheck();
   }
 
@@ -54,7 +75,7 @@ export class ArticleScanner {
     for (const [_, tracked] of this.trackedArticles) {
       const exists = tracked.targetFloors.some((f) => f.floorNum === floorNum);
       if (!exists) {
-        tracked.targetFloors.push({ floorNum, claimed: false });
+        tracked.targetFloors.push({ floorNum, claimed: false, grabbed: false });
         tracked.targetFloors.sort((a, b) => a.floorNum - b.floorNum);
         this.logger.log(`[${tracked.title}] 手动添加目标楼层: ${floorNum}`);
       }
@@ -62,7 +83,7 @@ export class ArticleScanner {
     this.updateCheckInterval();
   }
 
-  // 启动动态检查循环
+  // 动态检查循环
   private startDynamicCheck() {
     const check = async () => {
       await this.checkCommentFloors();
@@ -72,13 +93,14 @@ export class ArticleScanner {
   }
 
   // 根据盖楼速度和距离目标楼层的差距动态调整检查间隔
+  // 逻辑：速度=0 时 20s 查一次，有速度时根据差距降级到 1-10s
   private updateCheckInterval() {
     if (this.trackedArticles.size === 0) {
-      this.checkInterval = 60000; // 没有监控的帖子，60 秒检查一次
+      this.checkInterval = 60000;
       return;
     }
 
-    // 检查是否有帖子盖楼速度过快（>100层/分钟），直接改为1秒间隔
+    // 检查是否有帖子有实际速度
     let maxSpeed = 0;
     for (const [_, tracked] of this.trackedArticles) {
       if (tracked.currentSpeed > maxSpeed) {
@@ -86,42 +108,53 @@ export class ArticleScanner {
       }
     }
 
-    if (maxSpeed > 100) {
-      this.checkInterval = 1000;
-      this.logger.log(
-        `检测到盖楼速度过快(${maxSpeed}层/分钟)，检查间隔调整为: 1秒`,
-      );
+    // 速度为零，保持慢速轮询只检测速度
+    if (maxSpeed === 0 && !this.hasPendingNearTarget()) {
+      this.checkInterval = 20000;
       return;
     }
 
-    let minGap = Infinity;
+    // 有速度时，根据盖楼速度优先降级间隔
+    if (maxSpeed > 100) {
+      this.checkInterval = 1000;
+      return;
+    }
+    if (maxSpeed > 50) {
+      this.checkInterval = 3000;
+      return;
+    }
 
+    // 低速度时，根据到目标楼层的差距调整
+    let minGap = Infinity;
     for (const [_, tracked] of this.trackedArticles) {
       const pendingFloors = tracked.targetFloors.filter((f) => !f.claimed);
       if (pendingFloors.length === 0) continue;
 
       const nextTarget = pendingFloors[0].floorNum;
       const gap = nextTarget - tracked.lastCheckedFloor;
-
       if (gap > 0 && gap < minGap) {
         minGap = gap;
       }
     }
 
-    // 动态调整间隔
     if (minGap < 10) {
-      this.checkInterval = 1000; // 差 10 层以内：1 秒
-    } else if (minGap < 50) {
-      this.checkInterval = 1000; // 差 50 层以内：1 秒
+      this.checkInterval = 1000;
     } else if (minGap < 100) {
-      this.checkInterval = 5000; // 差 100 层以内：5 秒
+      this.checkInterval = 5000;
     } else {
-      this.checkInterval = 10000; // 差 100 层以上：10 秒
+      this.checkInterval = 10000;
     }
+  }
 
-    this.logger.log(
-      `检查间隔调整为: ${this.checkInterval / 1000}秒 (最近目标差距: ${minGap}层)`,
-    );
+  // 是否有帖子的目标楼层已接近（差距 < 200 层）
+  private hasPendingNearTarget(): boolean {
+    for (const [_, tracked] of this.trackedArticles) {
+      const pendingFloors = tracked.targetFloors.filter((f) => !f.claimed);
+      if (pendingFloors.length === 0) continue;
+      const gap = pendingFloors[0].floorNum - tracked.lastCheckedFloor;
+      if (gap > 0 && gap < 200) return true;
+    }
+    return false;
   }
 
   // 每5分钟扫描一次新帖子
@@ -181,25 +214,43 @@ export class ArticleScanner {
           continue;
         }
 
-        this.logger.log(`目标楼层: ${targetFloors.join(', ')}`);
+        // 解析指定的评论内容
+        const commentContent =
+          this.parseCommentContent(
+            detail.fullContent || detail.simpleContent || '',
+          ) || '1';
+
+        this.logger.log(
+          `目标楼层: ${targetFloors.join(', ')}, 评论内容: "${commentContent}"`,
+        );
 
         // 添加到跟踪列表
         this.trackedArticles.set(article.businessId, {
           businessId: article.businessId,
           title: article.title,
           publishTime: article.publishTime,
+          commentContent,
           targetFloors: targetFloors.map((f) => ({
             floorNum: f,
             claimed: false,
+            grabbed: false,
           })),
           lastCheckedFloor: 0,
           lastCheckTime: 0,
           currentSpeed: 0,
         });
+        // 同时保存到已处理列表，这样帖子完成后结果不丢失
         this.processedArticles.set(article.businessId, {
           title: article.title,
           businessId: article.businessId,
+          publishTime: article.publishTime,
+          commentContent,
           reason: 'monitoring',
+          targetFloors: targetFloors.map((f) => ({
+            floorNum: f,
+            claimed: false,
+            grabbed: false,
+          })),
         });
 
         // 新增监控帖子，更新检查间隔
@@ -236,7 +287,10 @@ export class ArticleScanner {
 
         // 计算盖楼速度（层/分钟）
         const now = Date.now();
-        if (tracked.lastCheckTime > 0 && currentFloor > tracked.lastCheckedFloor) {
+        if (
+          tracked.lastCheckTime > 0 &&
+          currentFloor > tracked.lastCheckedFloor
+        ) {
           const elapsedMinutes = (now - tracked.lastCheckTime) / 60000;
           if (elapsedMinutes > 0) {
             tracked.currentSpeed = Math.round(
@@ -259,16 +313,25 @@ export class ArticleScanner {
           }
 
           // 当前楼层到达目标附近，开始尝试抢楼
+          // 速度越快，提前量越大，防止跳过窗口
+          const speedThreshold =
+            tracked.currentSpeed > 100
+              ? 30
+              : tracked.currentSpeed > 50
+                ? 15
+                : 10;
           const gap = target.floorNum - currentFloor;
-          if (gap > 0 && gap <= 10) {
+          if (gap > 0 && gap <= speedThreshold) {
             this.logger.log(
-              `[${tracked.title}] 接近目标楼层 ${target.floorNum}，当前楼层: ${currentFloor}，差距: ${gap}层，尝试抢楼`,
+              `[${tracked.title}] 接近目标楼层 ${target.floorNum}，当前楼层: ${currentFloor}，差距: ${gap}层，触发阈值: ${speedThreshold}层，尝试抢楼`,
             );
 
-            // 差距小于10层时连发两条
-            const sendCount = gap < 10 ? 2 : 1;
+            const sendCount = 3; // 高速度下发三条确保命中
             for (let i = 0; i < sendCount; i++) {
-              const result = await this.appService.sendComment(businessId, '1');
+              const result = await this.appService.sendComment(
+                businessId,
+                tracked.commentContent,
+              );
               if (result) {
                 this.logger.log(
                   `[${tracked.title}] 第${i + 1}条发送成功，目标: ${target.floorNum}, 实际: ${result.floorNum}`,
@@ -278,6 +341,42 @@ export class ArticleScanner {
                     `[${tracked.title}] 抢楼成功! 实际楼层 ${result.floorNum} 到达目标 ${target.floorNum}`,
                   );
                   target.claimed = true;
+                  target.grabbed = true;
+                  target.landedFloor = result.floorNum;
+                  target.claimedAt = Date.now();
+                  // 同步更新已处理列表的记录
+                  const processed = this.processedArticles.get(businessId);
+                  if (processed) {
+                    const pt = processed.targetFloors.find(
+                      (f) => f.floorNum === target.floorNum,
+                    );
+                    if (pt) {
+                      pt.claimed = true;
+                      pt.grabbed = true;
+                      pt.landedFloor = result.floorNum;
+                      pt.claimedAt = Date.now();
+                    }
+                  }
+                  // 自动验证：查目标楼层是不是我
+                  this.verifyFloor(businessId, target.floorNum).then((ok) => {
+                    target.verified = ok;
+                    if (processed) {
+                      const pt = processed.targetFloors.find(
+                        (f) => f.floorNum === target.floorNum,
+                      );
+                      if (pt) pt.verified = ok;
+                    }
+                    if (ok) {
+                      this.logger.log(
+                        `[${tracked.title}] ✓ 楼层 ${target.floorNum} 确认命中`,
+                      );
+                      this.saveGrabRecords();
+                    } else {
+                      this.logger.warn(
+                        `[${tracked.title}] ✗ 楼层 ${target.floorNum} 未命中（可能被抢）`,
+                      );
+                    }
+                  });
                   this.notificationService.send(
                     '抢楼成功!',
                     `<b>${tracked.title}</b><br>目标楼层: ${target.floorNum}<br>实际楼层: ${result.floorNum}`,
@@ -288,9 +387,23 @@ export class ArticleScanner {
             }
           }
 
-          // 已经超过目标楼层
-          if (currentFloor > target.floorNum) {
+          // 已经超过目标楼层（没抢到）
+          if (currentFloor > target.floorNum && !target.claimed) {
             target.claimed = true;
+            target.grabbed = false;
+            target.claimedAt = Date.now();
+            // 同步更新已处理列表
+            const processed = this.processedArticles.get(businessId);
+            if (processed) {
+              const pt = processed.targetFloors.find(
+                (f) => f.floorNum === target.floorNum,
+              );
+              if (pt) {
+                pt.claimed = true;
+                pt.grabbed = false;
+                pt.claimedAt = Date.now();
+              }
+            }
           }
         }
 
@@ -300,13 +413,16 @@ export class ArticleScanner {
         const allClaimed = tracked.targetFloors.every((f) => f.claimed);
         if (allClaimed) {
           this.logger.log(`[${tracked.title}] 所有目标楼层已完成，移除跟踪`);
-          this.trackedArticles.delete(businessId);
+          // 将最终结果保存到已处理列表
           this.processedArticles.set(businessId, {
             title: tracked.title,
             businessId: businessId,
+            publishTime: tracked.publishTime,
+            commentContent: tracked.commentContent,
             reason: 'all_floors_passed',
+            targetFloors: tracked.targetFloors.map((f) => ({ ...f })),
           });
-          // 移除监控帖子，更新检查间隔
+          this.trackedArticles.delete(businessId);
           this.updateCheckInterval();
         }
       } catch (error) {
@@ -342,9 +458,15 @@ export class ArticleScanner {
     const expired: any[] = [];
     for (const [id, info] of this.processedArticles) {
       if (info.reason === 'all_floors_passed') {
+        const grabbedFloors = info.targetFloors.filter((f) => f.grabbed);
         expired.push({
           businessId: id,
           title: info.title,
+          publishTime: info.publishTime,
+          targetFloors: info.targetFloors,
+          grabbedCount: grabbedFloors.length,
+          totalCount: info.targetFloors.length,
+          url: `https://bbplanet.bilibili.co/pc/#/detail?tId=${id}&h=4`,
         });
       }
     }
@@ -360,7 +482,168 @@ export class ArticleScanner {
     };
   }
 
-  // 从帖子内容中解析目标楼层
+  // 验证目标楼层：查帖子指定的楼层（如 666、2026、2233）上是不是我的名字
+  async verifyFloor(businessId: string, floorNum: number): Promise<boolean> {
+    try {
+      const data = await this.appService.getCommentFloor(businessId, floorNum);
+      if (!data) {
+        this.logger.warn(`验证失败: 未找到楼层 ${floorNum} 的评论`);
+        return false;
+      }
+
+      const myName = config.sourceNickname;
+      const matched = data.userName === myName;
+      this.logger.log(
+        `验证楼层 ${floorNum}: 用户名 "${data.userName}", ${matched ? '✓ 是我' : '✗ 不是'}`,
+      );
+      return matched;
+    } catch (error) {
+      this.logger.error(`验证失败 [楼层 ${floorNum}]:`, error.message);
+      return false;
+    }
+  }
+
+  // 验证所有帖子的所有目标楼层
+  async verifyAllGrabs() {
+    const results: any[] = [];
+    for (const [id, info] of this.processedArticles) {
+      for (const f of info.targetFloors) {
+        const ok = await this.verifyFloor(id, f.floorNum);
+        f.verified = ok;
+        if (ok) {
+          f.grabbed = true;
+          f.landedFloor = f.floorNum;
+        }
+        results.push({ title: info.title, floor: f.floorNum, verified: ok });
+      }
+    }
+    for (const [id, tracked] of this.trackedArticles) {
+      for (const f of tracked.targetFloors) {
+        const ok = await this.verifyFloor(id, f.floorNum);
+        f.verified = ok;
+        if (ok) {
+          f.grabbed = true;
+          f.landedFloor = f.floorNum;
+        }
+        results.push({ title: tracked.title, floor: f.floorNum, verified: ok });
+      }
+    }
+    this.saveGrabRecords();
+    return results;
+  }
+
+  // 从内存中提取已验证的抢楼记录
+  private collectGrabRecords(): any[] {
+    const records: any[] = [];
+    const seen = new Set<string>();
+
+    const collect = (
+      title: string,
+      bid: string,
+      f: TargetFloor,
+      commentContent: string,
+      publishTime: string,
+    ) => {
+      if (!f.grabbed || !f.verified) return;
+      const key = `${bid}:${f.floorNum}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      records.push({
+        title,
+        businessId: bid,
+        url: `https://bbplanet.bilibili.co/pc/#/detail?tId=${bid}&h=4`,
+        floorNum: f.floorNum,
+        landedFloor: f.landedFloor ?? f.floorNum,
+        commentContent,
+        publishTime,
+        verified: true,
+        verifiedAt: new Date().toISOString(),
+      });
+    };
+
+    for (const [id, info] of this.processedArticles) {
+      for (const f of info.targetFloors) {
+        collect(info.title, id, f, info.commentContent, info.publishTime);
+      }
+    }
+    for (const [id, tracked] of this.trackedArticles) {
+      for (const f of tracked.targetFloors) {
+        collect(
+          tracked.title,
+          id,
+          f,
+          tracked.commentContent,
+          tracked.publishTime,
+        );
+      }
+    }
+    return records;
+  }
+
+  // 保存抢楼记录到本地 JSON 文件
+  private saveGrabRecords() {
+    try {
+      const dir = path.dirname(this.grabRecordsPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const records = this.collectGrabRecords();
+      fs.writeFileSync(
+        this.grabRecordsPath,
+        JSON.stringify(records, null, 2),
+        'utf-8',
+      );
+      this.logger.log(
+        `抢楼记录已保存到 ${this.grabRecordsPath} (${records.length} 条)`,
+      );
+    } catch (error) {
+      this.logger.error('保存抢楼记录失败:', error.message);
+    }
+  }
+
+  // 获取所有已保存的抢楼记录
+  getGrabRecords(): any[] {
+    try {
+      if (fs.existsSync(this.grabRecordsPath)) {
+        const raw = fs.readFileSync(this.grabRecordsPath, 'utf-8');
+        return JSON.parse(raw);
+      }
+    } catch (error) {
+      this.logger.error('读取抢楼记录失败:', error.message);
+    }
+    return [];
+  }
+
+  // 从帖子内容中解析指定的评论内容
+  // 常见格式：评论"BML轨道已接入"、回复"xxxx"、发送"xxxx"
+  private parseCommentContent(content: string): string | null {
+    const cleaned = content
+      .replace(/&#60;/g, '<')
+      .replace(/&#62;/g, '>')
+      .replace(/&#47;/g, '/')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&#34;/g, '"')
+      .replace(/&quot;/g, '"')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\r?\n/g, ' ');
+
+    // 匹配：评论"xxx"、回复"xxx"、发送"xxx"、评论："xxx"、评论区 "xxx"
+    const patterns = [
+      /(?:评论|回复|发送|留言)[：:]\s*[""](.+?)[""]/,
+      /(?:评论|回复|发送|留言)\s*[""](.+?)[""]/,
+      /(?:评论区)\s+[""](.+?)[""]/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = cleaned.match(pattern);
+      if (match && match[1].trim()) {
+        return match[1].trim();
+      }
+    }
+
+    return null;
+  }
   private parseTargetFloors(content: string): number[] {
     const floors: number[] = [];
 
